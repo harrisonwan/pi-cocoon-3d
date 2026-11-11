@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EF">
+<title>Pi-Cocoon 3D Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Interactive 3D concept model of Pi-Cocoon, a portable padded picnic mat with a retractable three-rib canopy.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600&display=swap">
+<style>
+  /* Layout: full-screen 3D stage; title floats top-left, one compact control dock at the bottom. Single light theme by design. */
+  :root {
+    --bg: #F6F5EF; --bg2: #FFFFFF; --ink: #1E2A24; --muted: #5B6A62; --green: #2F5D46; --forest: #1F4A36; --navy: #1D2B4F;
+    --mint: #E3F0E8; --line: rgba(31, 74, 54, 0.14); --panel: rgba(255, 255, 255, 0.86); --rib: #B8663F; --onaccent: #FFFFFF;
+    --display: 'Outfit', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+    --text: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color-scheme: light;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: radial-gradient(120% 90% at 50% 38%, var(--bg2) 0%, var(--bg) 70%) fixed, var(--bg); color: var(--ink);
+    font-family: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: none; }
+  #view:active { cursor: grabbing; }
+  .ui { position: fixed; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .brand h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: clamp(28px, 4.2vw, 40px); letter-spacing: -0.01em; line-height: 1; }
+  .brand h1 .pi { color: var(--navy); } .brand h1 .co { color: var(--green); }
+  .brand p { margin: 6px 0 0; font-size: 15px; color: var(--muted); font-style: italic; }
+  .badge { font-size: 12px; font-weight: 500; color: var(--forest); background: var(--mint); border-radius: 999px; padding: 6px 11px; white-space: nowrap; }
+  .bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .hint { font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px;
+    transition: opacity .6s ease; letter-spacing: 0.01em; }
+  .hint.faded { opacity: 0.0; }
+  .hint .touch { display: none; }
+  @media (pointer: coarse) { .hint .mouse { display: none; } .hint .touch { display: inline; } }
+  .dock { pointer-events: auto; background: var(--panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid var(--line);
+    border-radius: 18px; padding: 10px; display: grid; grid-template-columns: auto auto; gap: 8px 12px; align-items: center; box-shadow: 0 8px 30px rgba(31, 74, 54, 0.10);
+    max-width: 100%; box-sizing: border-box; }
+  .seg { display: flex; background: var(--mint); border-radius: 12px; padding: 3px; gap: 3px; }
+  .seg button, .tool { font: 600 14px/1 var(--text); border: 0; cursor: pointer; border-radius: 9px; padding: 10px 14px; color: var(--forest); background: transparent; white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--green); color: var(--onaccent); box-shadow: 0 2px 6px rgba(31, 74, 54, 0.25); }
+  .tools { display: flex; gap: 6px; justify-content: flex-end; }
+  .tool { background: var(--bg2); border: 1px solid var(--line); }
+  .tool[aria-pressed="false"] { color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .desc { grid-column: 1 / -1; font-size: 13px; color: var(--muted); text-align: center; margin: 0; padding-bottom: 2px; }
+  .lab { position: fixed; left: 0; top: 0; pointer-events: none; font: 600 13px/1 var(--text); color: var(--onaccent); background: var(--rib);
+    padding: 6px 9px; border-radius: 999px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
+  .lab::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 2px; height: 9px; margin-left: -1px; background: var(--rib); }
+  #nogl { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink); background: var(--bg); }
+  @media (max-width: 560px) {
+    .dock { grid-template-columns: 1fr; width: 100%; }
+    .seg button { flex: 1; padding: 11px 6px; font-size: 13.5px; }
+    .tools { justify-content: center; }
+    .badge { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .hint { transition: none; } }
+</style>
+</head>
+<body>
+
+
+<canvas id="view" tabindex="0" aria-label="Interactive 3D model of Pi-Cocoon. Drag to rotate, scroll or pinch to zoom, right-drag or two-finger drag to move."></canvas>
+<div class="lab" id="rib1" hidden>Rib 1</div>
+<div class="lab" id="rib2" hidden>Rib 2</div>
+<div class="lab" id="rib3" hidden>Rib 3</div>
+<div class="ui">
+  <div class="top">
+    <div class="brand">
+      <h1><span class="pi">Pi-</span><span class="co">Cocoon</span></h1>
+      <p>Explore Your Shade in 3D</p>
+    </div>
+    <span class="badge">Concept model · 190 × 140 cm mat (proposed)</span>
+  </div>
+  <div class="bottom">
+    <div class="hint" id="hint"><span class="mouse">Drag to rotate • Scroll to zoom • Right-drag to move</span><span class="touch">Drag to rotate • Pinch to zoom • Two fingers to move</span></div>
+    <div class="dock" role="group" aria-label="Viewer controls">
+      <div class="seg" role="group" aria-label="Canopy position">
+        <button id="s-folded" data-state="folded" aria-pressed="false">Folded</button>
+        <button id="s-half" data-state="half" aria-pressed="false">Half-open</button>
+        <button id="s-full" data-state="full" aria-pressed="true">Fully open</button>
+      </div>
+      <div class="tools">
+        <button class="tool" id="labels" aria-pressed="true">Rib labels</button>
+        <button class="tool" id="reset">Reset view</button>
+      </div>
+      <p class="desc" id="stateDesc">Ribs 1, 2 and 3 apart · 3 visible frames</p>
+    </div>
+  </div>
+</div>
+<div id="nogl" hidden><p>This 3D viewer needs WebGL 2. Please open it in an up-to-date Chrome, Safari, Edge or Firefox.</p></div>
+
+<script>
+/* Pi-Cocoon procedural geometry (pure JS, no dependencies).
+ * Units: centimetres. Axes: x = along the mat (head end at x = 0), y = across, z = up.
+ * Edit the numbers in PC below to change the product; the viewer and the GLB export both read them.
+ */
+(function (root) {
+  const PC = {
+    L: 190, W: 140, TH: 5.0,          // mat length, width, total thickness
+    BASE_H: 1.2,                      // dark water-resistant base layer thickness
+    QUILT: [6, 2],                    // quilted panels along / across
+    RIB_A: 70, RIB_B: 100,            // U-shaped rib: half-span across the mat, height
+    HUB_X: 9, HUB_Z: 7,               // shared hinge axis (both sides of the mat)
+    RIB_R: 0.95,                      // rib tube radius
+    // Rib angles in degrees from vertical (+ = forward over the mat). Rib 1, Rib 2, Rib 3.
+    STATES: {
+      folded: [-86.0, -85.5, -85.0],  // all three stacked  -> 1 visible frame
+      half:   [-86.0, -6.5, -6.0],    // Rib 1 apart; Ribs 2 + 3 stacked -> 2 visible frames
+      full:   [-86.0, -6.5, 58.0],    // all three apart -> 3 visible frames
+    },
+    COLORS: {
+      canopy: [0.184, 0.365, 0.275], mesh: [0.118, 0.231, 0.176], rib: [0.11, 0.114, 0.125],
+      hub: [0.165, 0.176, 0.192], button: [0.914, 0.886, 0.827], mat: [0.914, 0.886, 0.827],
+      groove: [0.80, 0.76, 0.69], base: [0.30, 0.32, 0.34],
+    },
+  };
+
+  function hexc(c) { return c; }
+
+  // ---------- low-level builders ----------
+  function makeMesh(name, pos, nrm, idx, opts) {
+    return Object.assign({ name, pos: new Float32Array(pos), nrm: new Float32Array(nrm), idx: new Uint32Array(idx),
+      color: [1, 1, 1], col: null, rough: 0.8, spec: 0.1, doubleSided: false, castShadow: true }, opts || {});
+  }
+
+  function gridIndices(rows, cols, out, base) {
+    base = base || 0;
+    for (let i = 0; i < rows - 1; i++) for (let j = 0; j < cols - 1; j++) {
+      const a = base + i * cols + j, b = a + 1, c = a + cols, d = c + 1;
+      out.push(a, c, b, b, c, d);
+    }
+    return out;
+  }
+
+  function gridNormals(pos, rows, cols, nrm) {
+    nrm = nrm || new Float32Array(pos.length);
+    const P = (i, j, k) => pos[(i * cols + j) * 3 + k];
+    for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
+      const i0 = Math.max(i - 1, 0), i1 = Math.min(i + 1, rows - 1), j0 = Math.max(j - 1, 0), j1 = Math.min(j + 1, cols - 1);
+      const du = [P(i1, j, 0) - P(i0, j, 0), P(i1, j, 1) - P(i0, j, 1), P(i1, j, 2) - P(i0, j, 2)];
+      const dv = [P(i, j1, 0) - P(i, j0, 0), P(i, j1, 1) - P(i, j0, 1), P(i, j1, 2) - P(i, j0, 2)];
+      let n = [du[2] * dv[1] - du[1] * dv[2], du[0] * dv[2] - du[2] * dv[0], du[1] * dv[0] - du[0] * dv[1]];
+      const l = Math.hypot(n[0], n[1], n[2]) || 1;
+      const o = (i * cols + j) * 3; nrm[o] = n[0] / l; nrm[o + 1] = n[1] / l; nrm[o + 2] = n[2] / l;
+    }
+    return nrm;
+  }
+
+  function box(name, c, s, opts) {
+    const pos = [], nrm = [], idx = [];
+    const faces = [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]];
+    for (const [ax, sg] of faces) {
+      const u = (ax + 1) % 3, v = (ax + 2) % 3, b = pos.length / 3;
+      for (const [a, bb] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const p = [0, 0, 0]; p[ax] = c[ax] + sg * s[ax] / 2; p[u] = c[u] + a * s[u] / 2; p[v] = c[v] + bb * s[v] / 2;
+        pos.push(...p); const n = [0, 0, 0]; n[ax] = sg; nrm.push(...n);
+      }
+      if (sg > 0) idx.push(b, b + 1, b + 2, b, b + 2, b + 3); else idx.push(b, b + 2, b + 1, b, b + 3, b + 2);
+    }
+    return makeMesh(name, pos, nrm, idx, opts);
+  }
+
+  function cylinderY(name, c, r, h, opts, seg) {
+    seg = seg || 40;
+    const pos = [], nrm = [], idx = [];
+    for (const yy of [-h / 2, h / 2]) for (let k = 0; k <= seg; k++) {
+      const a = 2 * Math.PI * k / seg;
+      pos.push(c[0] + r * Math.cos(a), c[1] + yy, c[2] + r * Math.sin(a)); nrm.push(Math.cos(a), 0, Math.sin(a));
+    }
+    for (let k = 0; k < seg; k++) { const a = k, b = k + 1, cc = k + seg + 1, d = k + seg + 2; idx.push(a, b, cc, b, d, cc); }
+    for (const sg of [-1, 1]) {
+      const ctr = pos.length / 3; pos.push(c[0], c[1] + sg * h / 2, c[2]); nrm.push(0, sg, 0);
+      const b0 = pos.length / 3;
+      for (let k = 0; k <= seg; k++) { const a = 2 * Math.PI * k / seg; pos.push(c[0] + r * Math.cos(a), c[1] + sg * h / 2, c[2] + r * Math.sin(a)); nrm.push(0, sg, 0); }
+      for (let k = 0; k < seg; k++) sg > 0 ? idx.push(ctr, b0 + k, b0 + k + 1) : idx.push(ctr, b0 + k + 1, b0 + k);
+    }
+    return makeMesh(name, pos, nrm, idx, opts);
+  }
+
+  // tube along a polyline (parallel-transport frames)
+  function tubeAlong(pts, r, seg) {
+    seg = seg || 12;
+    const n = pts.length, pos = new Float32Array(n * (seg + 1) * 3), nrm = new Float32Array(n * (seg + 1) * 3);
+    let T = null, N = null;
+    for (let i = 0; i < n; i++) {
+      const a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, n - 1)];
+      let t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]; const tl = Math.hypot(...t) || 1; t = t.map(v => v / tl);
+      if (!N) { const ref = Math.abs(t[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]; N = cross(ref, t); N = norm(N); }
+      else { const B = cross(T, t); if (Math.hypot(...B) > 1e-6) N = norm(cross(t, cross(N, t))); }
+      T = t; const Bv = cross(t, N);
+      for (let k = 0; k <= seg; k++) {
+        const ang = 2 * Math.PI * k / seg, cs = Math.cos(ang), sn = Math.sin(ang);
+        const d = [N[0] * cs + Bv[0] * sn, N[1] * cs + Bv[1] * sn, N[2] * cs + Bv[2] * sn];
+        const o = (i * (seg + 1) + k) * 3;
+        pos[o] = pts[i][0] + r * d[0]; pos[o + 1] = pts[i][1] + r * d[1]; pos[o + 2] = pts[i][2] + r * d[2];
+        nrm[o] = d[0]; nrm[o + 1] = d[1]; nrm[o + 2] = d[2];
+      }
+    }
+    return { pos, nrm, rows: n, cols: seg + 1 };
+  }
+  function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+  function norm(a) { const l = Math.hypot(...a) || 1; return a.map(v => v / l); }
+
+  // ---------- product parts ----------
+  function matTop() {
+    const { L, W, TH, BASE_H, QUILT } = PC, step = 1.25, R = 4.0;
+    const nx = Math.round(L / step) + 1, ny = Math.round(W / step) + 1, Hc = TH - BASE_H;
+    const pos = [], col = [];
+    const pw = L / QUILT[0], ph = W / QUILT[1];
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+      const x = i * L / (nx - 1), y = -W / 2 + j * W / (ny - 1);
+      const d = Math.min(x, L - x, y + W / 2, W / 2 - y);
+      let z = d >= R ? Hc : Hc * Math.sqrt(Math.max(0, 1 - Math.pow(1 - d / R, 2)));
+      const gx = Math.abs(((x + pw / 2) % pw) - pw / 2), gy = Math.abs(((y + W / 2 + ph / 2) % ph) - ph / 2);
+      let g = 0;
+      if (x > 1 && x < L - 1) g = Math.max(g, Math.exp(-Math.pow(gx / 1.5, 2)));
+      if (Math.abs(y) < W / 2 - 1) g = Math.max(g, Math.exp(-Math.pow(gy / 1.5, 2)));
+      const puff = 0.35 * Math.sin(Math.PI * ((x % pw) / pw)) * Math.sin(Math.PI * (((y + W / 2) % ph) / ph));
+      z = BASE_H + Math.max(0.15, z - 1.4 * g * Math.min(1, d / R) + puff * Math.min(1, d / R));
+      pos.push(x, y, z);
+      const m = PC.COLORS.mat, gr = PC.COLORS.groove, t = Math.min(1, g * 0.8);
+      col.push(m[0] * (1 - t) + gr[0] * t, m[1] * (1 - t) + gr[1] * t, m[2] * (1 - t) + gr[2] * t);
+    }
+    const idx = gridIndices(nx, ny, []);
+    const p = new Float32Array(pos), n = gridNormals(p, nx, ny);
+    for (let k = 2; k < n.length; k += 3) if (n[k] < 0) { n[k - 2] *= -1; n[k - 1] *= -1; n[k] *= -1; }
+    return makeMesh('Padded mat (EPE foam, cream top)', p, n, idx, { col: new Float32Array(col), rough: 0.95, spec: 0.03 });
+  }
+
+  function matBase() {
+    const { L, W, BASE_H } = PC;
+    return box('Water-resistant base', [L / 2, 0, BASE_H / 2], [L + 1.2, W + 1.2, BASE_H], { color: PC.COLORS.base, rough: 0.7, spec: 0.08 });
+  }
+
+  function ribPoints(phiDeg, nt) {
+    nt = nt || 72;
+    const ph = phiDeg * Math.PI / 180, pts = [];
+    for (let k = 0; k < nt; k++) {
+      const t = Math.PI * k / (nt - 1), u = PC.RIB_B * Math.sin(t);
+      pts.push([PC.HUB_X + u * Math.sin(ph), PC.RIB_A * Math.cos(t), PC.HUB_Z + u * Math.cos(ph)]);
+    }
+    return pts;
+  }
+
+  function ribMesh(i, phiDeg) {
+    const tb = tubeAlong(ribPoints(phiDeg), PC.RIB_R, 12);
+    const idx = gridIndices(tb.rows, tb.cols, []);
+    return makeMesh('Rib ' + (i + 1) + ' (U-shaped frame)', tb.pos, tb.nrm, idx, { color: PC.COLORS.rib, rough: 0.35, spec: 0.5, dynamic: true, rib: i });
+  }
+  function updateRib(mesh, phiDeg) {
+    const tb = tubeAlong(ribPoints(phiDeg), PC.RIB_R, 12); mesh.pos.set(tb.pos); mesh.nrm.set(tb.nrm);
+  }
+
+  const FAB = { nt: 72, nseg: 16 };
+  function fabricRows() { return FAB.nseg + (FAB.nseg + 1); }
+  function fabricPositions(angs, pos) {
+    const nt = FAB.nt, ns = FAB.nseg; let o = 0;
+    for (let i = 0; i < 2; i++) {
+      const a0 = angs[i] * Math.PI / 180, a1 = angs[i + 1] * Math.PI / 180;
+      const spread = Math.abs(angs[i + 1] - angs[i]), sag0 = 0.045 * Math.min(spread / 40, 1);
+      const nf = i === 0 ? ns : ns + 1;
+      for (let r = 0; r < nf; r++) {
+        const f = r / ns, ph = a0 + f * (a1 - a0), sag = sag0 * Math.sin(Math.PI * f);
+        for (let k = 0; k < nt; k++) {
+          const t = Math.PI * k / (nt - 1), y = PC.RIB_A * Math.cos(t) * (1 - 0.25 * sag), u = PC.RIB_B * Math.sin(t) * (1 - sag);
+          pos[o++] = PC.HUB_X + u * Math.sin(ph); pos[o++] = y; pos[o++] = PC.HUB_Z + u * Math.cos(ph);
+        }
+      }
+    }
+    return pos;
+  }
+  function fabricMesh(angs) {
+    const rows = fabricRows(), nt = FAB.nt, pos = new Float32Array(rows * nt * 3);
+    fabricPositions(angs, pos);
+    const col = new Float32Array(rows * nt * 3);
+    for (let r = 0; r < rows; r++) for (let k = 0; k < nt; k++) {
+      const t = Math.PI * k / (nt - 1), seg0 = r < FAB.nseg, f = (r % FAB.nseg) / FAB.nseg;
+      const inMesh = seg0 && t > 0.34 * Math.PI && t < 0.66 * Math.PI && f > 0.2 && f < 0.8;
+      const c = inMesh ? PC.COLORS.mesh : PC.COLORS.canopy; col.set(c, (r * nt + k) * 3);
+    }
+    const idx = gridIndices(rows, nt, []);
+    return makeMesh('Canopy fabric (two panels between the three ribs)', pos, gridNormals(pos, rows, nt), idx,
+      { col, rough: 0.85, spec: 0.06, doubleSided: true, dynamic: true, fabric: true, rows, cols: nt });
+  }
+  function updateFabric(mesh, angs) { fabricPositions(angs, mesh.pos); gridNormals(mesh.pos, mesh.rows, mesh.cols, mesh.nrm); }
+
+  function hubs() {
+    const out = [], A = PC.RIB_A;
+    for (const s of [-1, 1]) {
+      out.push(cylinderY('Hinge hub ' + (s < 0 ? 'right' : 'left'), [PC.HUB_X, s * (A + 1.8), PC.HUB_Z], 6.2, 3.6, { color: PC.COLORS.hub, rough: 0.4, spec: 0.35 }));
+      out.push(cylinderY('Hinge release button ' + (s < 0 ? 'right' : 'left'), [PC.HUB_X, s * (A + 4.0), PC.HUB_Z], 2.3, 1.2, { color: PC.COLORS.button, rough: 0.5, spec: 0.3 }));
+      out.push(box('Hinge mount ' + (s < 0 ? 'right' : 'left'), [PC.HUB_X, s * (A - 0.5), 3.2], [13, 4.5, 4.5], { color: PC.COLORS.hub, rough: 0.5, spec: 0.2 }));
+    }
+    return out;
+  }
+  function stakeTabs() {
+    const out = [];
+    for (const x of [2, PC.L - 2]) for (const s of [-1, 1])
+      out.push(box('Ground-stake tab', [x, s * (PC.W / 2 + 2.5), 0.6], [6, 5, 1.2], { color: PC.COLORS.base, rough: 0.7 }));
+    return out;
+  }
+
+  function buildProduct(state) {
+    const angs = PC.STATES[state || 'full'].slice();
+    const ribs = angs.map((a, i) => ribMesh(i, a));
+    const fabric = fabricMesh(angs);
+    return { meshes: [matBase(), matTop(), fabric, ...ribs, ...hubs(), ...stakeTabs()], ribs, fabric, angs };
+  }
+  function setAngles(product, angs) {
+    product.angs = angs.slice();
+    product.ribs.forEach((m, i) => updateRib(m, angs[i]));
+    updateFabric(product.fabric, angs);
+  }
+  function ribApex(phiDeg) { return ribPoints(phiDeg, 3)[1]; }
+
+  root.PiCocoon = { PC, buildProduct, setAngles, ribApex };
+  if (typeof module !== 'undefined') module.exports = root.PiCocoon;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Pi-Cocoon 3D viewer: WebGL2 renderer + orbit controls. Depends only on geometry.js (window.PiCocoon). */
+(function () {
+  const { PC, buildProduct, setAngles, ribApex } = window.PiCocoon;
+  const canvas = document.getElementById('view');
+  const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+  if (!gl) { document.getElementById('nogl').hidden = false; return; }
+
+  // ---------- math ----------
+  const V = {
+    sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+    mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s], dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+    cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+    norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+  };
+  function lookAt(e, t, up) {
+    const f = V.norm(V.sub(t, e)), s = V.norm(V.cross(f, up)), u = V.cross(s, f);
+    return new Float32Array([s[0], u[0], -f[0], 0, s[1], u[1], -f[1], 0, s[2], u[2], -f[2], 0, -V.dot(s, e), -V.dot(u, e), V.dot(f, e), 1]);
+  }
+  function persp(fovy, asp, n, f) {
+    const t = 1 / Math.tan(fovy / 2);
+    return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]);
+  }
+  function ortho(l, r, b, t, n, f) {
+    return new Float32Array([2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -2 / (f - n), 0, -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1]);
+  }
+  function mmul(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; }
+    return o;
+  }
+  function xform(m, p) {
+    const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+      z = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14], w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    return [x / w, y / w, z / w, w];
+  }
+
+  // ---------- shaders ----------
+  const VS = `#version 300 es
+  in vec3 aPos; in vec3 aNrm; in vec3 aCol;
+  uniform mat4 uVP; uniform mat4 uLVP;
+  out vec3 vPos; out vec3 vNrm; out vec3 vCol; out vec4 vSh;
+  void main(){ vPos=aPos; vNrm=aNrm; vCol=aCol; vSh=uLVP*vec4(aPos,1.0); gl_Position=uVP*vec4(aPos,1.0); }`;
+  const FS = `#version 300 es
+  precision highp float; precision highp sampler2DShadow;
+  in vec3 vPos; in vec3 vNrm; in vec3 vCol; in vec4 vSh;
+  uniform vec3 uEye; uniform vec3 uSun; uniform sampler2DShadow uShadow; uniform vec2 uTexel;
+  uniform float uRough; uniform float uSpec; uniform float uTrans; uniform int uGround;
+  out vec4 o;
+  float shadowAt(float bias){
+    vec3 p = vSh.xyz / vSh.w * 0.5 + 0.5; p.z -= bias;
+    if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 1.0;
+    float s = 0.0;
+    for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) s += texture(uShadow, vec3(p.xy + vec2(float(i), float(j)) * uTexel * 1.6, p.z));
+    return s / 25.0;
+  }
+  void main(){
+    if (uGround == 1) {
+      float sh = shadowAt(0.0015);
+      vec2 q = vPos.xy - vec2(95.0, 0.0);
+      vec2 dd = abs(q) - vec2(96.0, 71.5);
+      float dist = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
+      float ao = exp(-max(dist, 0.0) / 5.0) * 0.55;
+      float fade = 1.0 - smoothstep(170.0, 460.0, length(q));
+      float a = clamp((1.0 - sh) * 0.32 + ao * 0.45, 0.0, 0.55) * fade;
+      o = vec4(vec3(0.09, 0.12, 0.10) * a, a); return;
+    }
+    vec3 n = normalize(vNrm); if (!gl_FrontFacing) n = -n;
+    vec3 v = normalize(uEye - vPos);
+    vec3 base = pow(vCol, vec3(2.2));
+    float ndl = dot(n, uSun);
+    float sh = shadowAt(0.0008 + 0.0025 * (1.0 - clamp(abs(ndl), 0.0, 1.0)));
+    float hemi = 0.5 + 0.5 * n.z;
+    vec3 amb = base * mix(vec3(0.30, 0.29, 0.26), vec3(0.50, 0.53, 0.56), hemi);
+    vec3 dif = base * vec3(1.05, 1.0, 0.94) * max(ndl, 0.0) * sh * 1.45;
+    vec3 tr = base * uTrans * max(-ndl, 0.0) * sh * 0.9;
+    vec3 h = normalize(uSun + v);
+    float sp = pow(max(dot(n, h), 0.0), mix(10.0, 80.0, 1.0 - uRough)) * uSpec * sh * step(0.0, ndl);
+    float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.06;
+    vec3 c = amb + dif + tr + vec3(sp) + rim * vec3(0.55, 0.6, 0.65);
+    c = c * (1.0 + c / 4.0) / (1.0 + c);
+    o = vec4(pow(c * 1.25, vec3(1.0 / 2.2)), 1.0);
+  }`;
+  const SVS = `#version 300 es
+  in vec3 aPos; uniform mat4 uLVP; void main(){ gl_Position = uLVP * vec4(aPos, 1.0); }`;
+  const SFS = `#version 300 es
+  precision mediump float; out vec4 o; void main(){ o = vec4(1.0); }`;
+
+  function prog(vs, fs) {
+    const p = gl.createProgram();
+    for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+      const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+      gl.attachShader(p, sh);
+    }
+    gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aNrm'); gl.bindAttribLocation(p, 2, 'aCol');
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+  const P = prog(VS, FS), SP = prog(SVS, SFS);
+  const U = n => gl.getUniformLocation(P, n);
+  const u = { VP: U('uVP'), LVP: U('uLVP'), Eye: U('uEye'), Sun: U('uSun'), Shadow: U('uShadow'), Texel: U('uTexel'),
+    Rough: U('uRough'), Spec: U('uSpec'), Trans: U('uTrans'), Ground: U('uGround') };
+  const suLVP = gl.getUniformLocation(SP, 'uLVP');
+
+  // ---------- scene ----------
+  const product = buildProduct('full');
+  function upload(m) {
+    m.vao = gl.createVertexArray(); gl.bindVertexArray(m.vao);
+    const usage = m.dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
+    m.bp = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, m.bp); gl.bufferData(gl.ARRAY_BUFFER, m.pos, usage);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    m.bn = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, m.bn); gl.bufferData(gl.ARRAY_BUFFER, m.nrm, usage);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+    if (m.col) { m.bc = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, m.bc); gl.bufferData(gl.ARRAY_BUFFER, m.col, gl.STATIC_DRAW); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0); }
+    else gl.disableVertexAttribArray(2);
+    m.bi = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.bi); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.idx, gl.STATIC_DRAW);
+    m.count = m.idx.length; gl.bindVertexArray(null);
+  }
+  function reupload(m) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.bp); gl.bufferSubData(gl.ARRAY_BUFFER, 0, m.pos);
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.bn); gl.bufferSubData(gl.ARRAY_BUFFER, 0, m.nrm);
+  }
+  product.meshes.forEach(upload);
+  const G = 1400, ground = { pos: new Float32Array([95 - G, -G, 0, 95 + G, -G, 0, 95 + G, G, 0, 95 - G, G, 0]), nrm: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]), idx: new Uint32Array([0, 1, 2, 0, 2, 3]), color: [1, 1, 1] };
+  upload(ground);
+
+  // shadow map
+  const SM = 2048;
+  const smTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, smTex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, SM, SM);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const smFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, smFB);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, smTex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  const SUN = V.norm([0.35, -0.55, 0.85]);
+  const LC = [55, 0, 30];
+  const LVP = mmul(ortho(-200, 200, -200, 200, 50, 1100), lookAt(V.add(LC, V.mul(SUN, 500)), LC, [0, 0, 1]));
+  let shadowDirty = true;
+
+  // ---------- camera / orbit controls ----------
+  const HOME = { target: [62, 0, 34], theta: -0.84, phi: 1.19, r: 560 };
+  const cam = { target: HOME.target.slice(), theta: HOME.theta, phi: HOME.phi, r: HOME.r, fov: 32 * Math.PI / 180 };
+  const vel = { theta: 0, phi: 0 };
+  let dragging = false, tween = null;
+  const homeR = () => { const a = canvas.clientWidth / Math.max(1, canvas.clientHeight); return HOME.r * Math.max(1, 1.3 / a); };
+  cam.r = homeR();
+  function eye() {
+    const s = Math.sin(cam.phi);
+    return [cam.target[0] + cam.r * s * Math.cos(cam.theta), cam.target[1] + cam.r * s * Math.sin(cam.theta), cam.target[2] + cam.r * Math.cos(cam.phi)];
+  }
+  function clampCam() { cam.phi = Math.min(Math.max(cam.phi, 0.03), Math.PI - 0.03); cam.r = Math.min(Math.max(cam.r, 110), Math.max(1500, homeR() * 1.6)); }
+  function pan(dx, dy) {
+    const e = eye(), f = V.norm(V.sub(cam.target, e)), r = V.norm(V.cross(f, [0, 0, 1])), up = V.cross(r, f);
+    const k = 2 * cam.r * Math.tan(cam.fov / 2) / canvas.clientHeight;
+    cam.target = V.add(cam.target, V.add(V.mul(r, -dx * k), V.mul(up, dy * k)));
+  }
+  const ROT = 0.0075;
+  const pointers = new Map(); let lastPinch = null, panMode = false;
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    tween = null; vel.theta = vel.phi = 0; dragging = true;
+    panMode = e.pointerType === 'mouse' && (e.button === 2 || e.button === 1 || e.shiftKey || e.ctrlKey || e.metaKey);
+    lastPinch = null; hideHint();
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; lastPinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mid: [(a.x + b.x) / 2, (a.y + b.y) / 2] }; }
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId), dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      if (panMode) pan(dx, dy);
+      else { cam.theta -= dx * ROT; cam.phi -= dy * ROT; vel.theta = -dx * ROT; vel.phi = -dy * ROT; }
+    } else if (pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y), mid = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+      if (lastPinch) { cam.r *= lastPinch.d / Math.max(d, 1); pan(mid[0] - lastPinch.mid[0], mid[1] - lastPinch.mid[1]); }
+      lastPinch = { d, mid };
+    }
+    clampCam(); requestDraw();
+  });
+  const up = e => { pointers.delete(e.pointerId); lastPinch = null; if (pointers.size === 0) { dragging = false; requestDraw(); } };
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  canvas.addEventListener('wheel', e => { e.preventDefault(); tween = null; cam.r *= Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0012)); clampCam(); requestDraw(); hideHint(); }, { passive: false });
+  window.addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('button')) return;
+    const k = { ArrowLeft: [0.08, 0], ArrowRight: [-0.08, 0], ArrowUp: [0, 0.06], ArrowDown: [0, -0.06] }[e.key];
+    if (k) { cam.theta += k[0]; cam.phi += k[1]; clampCam(); requestDraw(); }
+    if (e.key === '+' || e.key === '=') { cam.r *= 0.9; clampCam(); requestDraw(); }
+    if (e.key === '-') { cam.r *= 1.1; clampCam(); requestDraw(); }
+  });
+
+  function resetView() {
+    let dth = HOME.theta - cam.theta; dth = Math.atan2(Math.sin(dth), Math.cos(dth));
+    tween = { t0: performance.now(), dur: 850, from: { target: cam.target.slice(), theta: cam.theta, phi: cam.phi, r: cam.r },
+      to: { target: HOME.target.slice(), theta: cam.theta + dth, phi: HOME.phi, r: homeR() } };
+    vel.theta = vel.phi = 0; requestDraw();
+  }
+  const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+  // ---------- canopy states ----------
+  const ORDER = ['folded', 'half', 'full'];
+  let cur = PC.STATES.full.slice(), curState = 'full', legs = [];
+  function goState(name) {
+    let i = ORDER.indexOf(curState); const j = ORDER.indexOf(name); legs = [];
+    let from = cur.slice();
+    while (i !== j) { i += Math.sign(j - i); const to = PC.STATES[ORDER[i]].slice(); legs.push({ from, to }); from = to; }
+    if (legs.length) { legs[0].t0 = performance.now(); }
+    curState = name; updateUI(); requestDraw();
+  }
+  function stepState(now) {
+    if (!legs.length) return false;
+    const L = legs[0], t = Math.min(1, (now - L.t0) / 900), e = ease(t);
+    cur = L.from.map((a, k) => a + (L.to[k] - a) * e);
+    setAngles(product, cur); product.ribs.forEach(reupload); reupload(product.fabric); shadowDirty = true;
+    if (t >= 1) { legs.shift(); if (legs.length) legs[0].t0 = now; }
+    return true;
+  }
+
+  // ---------- labels ----------
+  const labelEls = [0, 1, 2].map(i => document.getElementById('rib' + (i + 1)));
+  let showLabels = true;
+  function placeLabels(vp) {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const pts = cur.map(a => { const p = xform(vp, ribApex(a)); return { x: (p[0] * 0.5 + 0.5) * w, y: (1 - (p[1] * 0.5 + 0.5)) * h, ok: p[3] > 0 && Math.abs(p[0]) < 1.2 && Math.abs(p[1]) < 1.2 }; });
+    const near = (a, b) => Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y) < 34 || Math.abs(cur[a] - cur[b]) < 3;
+    const groups = []; [0, 1, 2].forEach(i => { const g = groups.find(g => near(g[g.length - 1], i)); g ? g.push(i) : groups.push([i]); });
+    labelEls.forEach(el => { el.hidden = true; });
+    if (!showLabels) return;
+    groups.forEach(g => {
+      const el = labelEls[g[0]], p = pts[g[g.length - 1]];
+      if (!p.ok) return;
+      el.textContent = g.length === 1 ? 'Rib ' + (g[0] + 1) : 'Ribs ' + g.map(i => i + 1).join(' + ');
+      el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, calc(-100% - 12px))`; el.hidden = false;
+    });
+  }
+
+  // ---------- render ----------
+  let raf = 0;
+  function requestDraw() { if (!raf) raf = requestAnimationFrame(frame); }
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  }
+  function drawMesh(m) {
+    gl.bindVertexArray(m.vao);
+    if (!m.col) gl.vertexAttrib3f(2, m.color[0], m.color[1], m.color[2]);
+    gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0);
+  }
+  function frame(now) {
+    raf = 0;
+    let busy = stepState(now);
+    if (tween) {
+      const t = Math.min(1, (now - tween.t0) / tween.dur), e = ease(t), f = tween.from, to = tween.to;
+      cam.target = f.target.map((v, k) => v + (to.target[k] - v) * e); cam.theta = f.theta + (to.theta - f.theta) * e;
+      cam.phi = f.phi + (to.phi - f.phi) * e; cam.r = f.r + (to.r - f.r) * e;
+      if (t >= 1) tween = null; busy = true;
+    } else if (!dragging && (Math.abs(vel.theta) > 1e-4 || Math.abs(vel.phi) > 1e-4)) {
+      cam.theta += vel.theta; cam.phi += vel.phi; vel.theta *= 0.9; vel.phi *= 0.9; clampCam(); busy = true;
+    }
+    resize();
+    if (shadowDirty) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, smFB); gl.viewport(0, 0, SM, SM);
+      gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.colorMask(false, false, false, false);
+      gl.clear(gl.DEPTH_BUFFER_BIT); gl.useProgram(SP); gl.uniformMatrix4fv(suLVP, false, LVP);
+      product.meshes.forEach(m => { if (m.castShadow) { gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0); } });
+      gl.colorMask(true, true, true, true); gl.bindFramebuffer(gl.FRAMEBUFFER, null); shadowDirty = false;
+    }
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const e = eye(), asp = canvas.width / canvas.height;
+    const vp = mmul(persp(cam.fov, asp, 5, 6000), lookAt(e, cam.target, [0, 0, 1]));
+    gl.useProgram(P);
+    gl.uniformMatrix4fv(u.VP, false, vp); gl.uniformMatrix4fv(u.LVP, false, LVP);
+    gl.uniform3fv(u.Eye, e); gl.uniform3fv(u.Sun, SUN); gl.uniform2f(u.Texel, 1 / SM, 1 / SM);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, smTex); gl.uniform1i(u.Shadow, 0);
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
+    gl.uniform1i(u.Ground, 0);
+    for (const m of product.meshes) {
+      if (m.doubleSided) gl.disable(gl.CULL_FACE); else { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); }
+      gl.uniform1f(u.Rough, m.rough); gl.uniform1f(u.Spec, m.spec); gl.uniform1f(u.Trans, m.fabric ? 0.35 : 0.0);
+      drawMesh(m);
+    }
+    if (e[2] > 0) {   // shadow-catcher ground, only seen from above
+      gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+      gl.uniform1i(u.Ground, 1); drawMesh(ground); gl.depthMask(true); gl.disable(gl.BLEND);
+    }
+    placeLabels(vp);
+    if (busy) requestDraw();
+  }
+
+  // ---------- UI ----------
+  const DESC = { folded: 'Ribs 1, 2 and 3 stacked · 1 visible frame', half: 'Rib 1 apart · Ribs 2 and 3 stacked · 2 visible frames', full: 'Ribs 1, 2 and 3 apart · 3 visible frames' };
+  function updateUI() {
+    document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === curState)));
+    document.getElementById('stateDesc').textContent = DESC[curState];
+  }
+  document.querySelectorAll('[data-state]').forEach(b => b.addEventListener('click', () => goState(b.dataset.state)));
+  document.getElementById('reset').addEventListener('click', resetView);
+  const lt = document.getElementById('labels');
+  lt.addEventListener('click', () => { showLabels = !showLabels; lt.setAttribute('aria-pressed', String(showLabels)); requestDraw(); });
+  const hint = document.getElementById('hint');
+  let hintTimer = setTimeout(hideHint, 12000);
+  function hideHint() { if (hint) hint.classList.add('faded'); clearTimeout(hintTimer); }
+  window.addEventListener('resize', () => { requestDraw(); });
+  updateUI(); requestDraw();
+
+  // hooks for automated tests / exports
+  window.__pc = { cam, goState, resetView, get state() { return curState; }, get angles() { return cur.slice(); }, eye, product, requestDraw };
+})();
+
+</script>
+</body>
+</html>
